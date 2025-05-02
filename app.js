@@ -1,13 +1,13 @@
 const express = require('express');
 const { spawn } = require('child_process');
-
 const path = require('path');
+
 const app = express();
 const PORT = 3002;
 
 app.use(express.json());
 
-// 🔓 Serve compressed audio files as static files
+// Serve static files (like .mp3/.wav output)
 app.use('/files', express.static(__dirname));
 
 app.post('/transcribe', (req, res) => {
@@ -17,32 +17,31 @@ app.post('/transcribe', (req, res) => {
   const videoId = new URL(url).searchParams.get('v');
   if (!videoId) return res.status(400).send({ error: 'Invalid YouTube URL' });
 
-  const child = spawn('./venv/bin/python3', ['transcribe.py', videoId], {
-    cwd: __dirname
+  const child = spawn('python3', ['transcribe.py', videoId], {
+    cwd: __dirname,
   });
 
   let lastLine = '';
-  child.stdout.on('data', data => {
+  child.stdout.on('data', (data) => {
     lastLine = data.toString().trim().split('\n').pop();
   });
 
-  child.stderr.on('data', data => {
-    // Just collect but do not block
+  child.stderr.on('data', (data) => {
     console.error(data.toString());
   });
 
-  child.on('close', code => {
+  child.on('close', (code) => {
     if (code !== 0 || !lastLine) {
       return res.status(500).send({ error: 'Transcription failed' });
     }
 
     const fileName = path.basename(lastLine);
-    const publicUrl = `https://afe6-2600-3c04-00-f03c-95ff-fecc-2c37.ngrok-free.app:${PORT}/files/${fileName}`;
+    const publicUrl = `https://yourdomain.com/files/${fileName}`; // Replace with your Render domain
 
     res.send({
       message: '✅ Audio downloaded and compressed.',
       file: fileName,
-      url: publicUrl
+      url: publicUrl,
     });
   });
 });
