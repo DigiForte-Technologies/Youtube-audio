@@ -1,39 +1,24 @@
-# syntax = docker/dockerfile:1
+# Start with a base Node.js image
+FROM node:18
 
-# Adjust NODE_VERSION as desired
-ARG NODE_VERSION=18.20.6
-FROM node:${NODE_VERSION}-slim AS base
+# Install Python and FFmpeg
+RUN apt-get update && apt-get install -y python3 python3-pip ffmpeg
 
-LABEL fly_launch_runtime="Node.js"
-
-# Node.js app lives here
+# Set working directory
 WORKDIR /app
 
-# Set production environment
-ENV NODE_ENV="production"
-
-
-# Throw-away build stage to reduce size of final image
-FROM base AS build
-
-# Install packages needed to build node modules
-RUN apt-get update -qq && \
-    apt-get install --no-install-recommends -y build-essential node-gyp pkg-config python-is-python3
-
-# Install node modules
-COPY package-lock.json package.json ./
-RUN npm ci
-
-# Copy application code
+# Copy everything
 COPY . .
 
+# Install Python dependencies (if you have requirements.txt)
+RUN pip3 install whisper yt_dlp openai || true
 
-# Final stage for app image
-FROM base
 
-# Copy built application
-COPY --from=build /app /app
+# Install Node.js dependencies
+RUN npm install
 
-# Start the server by default, this can be overwritten at runtime
-EXPOSE 3000
-CMD [ "node", "index.js" ]
+# Expose the correct port
+EXPOSE 3002
+
+# Start the server
+CMD ["node", "app.js"]
