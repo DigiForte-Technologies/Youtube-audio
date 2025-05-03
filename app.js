@@ -36,7 +36,7 @@ app.post('/transcribe', (req, res) => {
     }
 
     const fileName = path.basename(lastLine);
-    const publicUrl = `https://yourdomain.com/files/${fileName}`; // Replace with your Render domain
+    const publicUrl = `https://youtube-audio-3jgp.onrender.com/files/${fileName}`; // Replace with your Render domain
 
     res.send({
       message: '✅ Audio downloaded and compressed.',
