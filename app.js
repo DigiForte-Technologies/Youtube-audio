@@ -207,6 +207,80 @@ app.post('/update-transcription', async (req, res) => {
 });
 
 
+// trigger
+const LOG_FILE = 'yt-trigger.log';
+const WEBHOOK_URL = 'https://n8n.codestream.ca/webhook/yt-run';
+const LOOP_DELAY_MS = 90_000; // 90 seconds between runs
+
+function log(msg) {
+  const line = `[${new Date().toISOString()}] ${msg}`;
+  fs.appendFileSync(LOG_FILE, line + '\n');
+  console.log(line);
+}
+
+// trigger loop
+
+app.get('/trigger-loop', async (req, res) => {
+  log('🔥 Loop started via /trigger-loop');
+  res.json({ message: 'Loop started. Check logs for progress.' });
+
+  while (true) {
+    try {
+      // Fetch next pending video
+      const { data, error } = await supabase
+        .from('youtube_video')
+        .select('*')
+        .eq('status', 'pending')
+        .limit(1);
+
+      if (error) {
+        log(`❌ Supabase fetch error: ${error.message}`);
+        break;
+      }
+
+      if (!data || data.length === 0) {
+        log('✅ No more pending videos. Exiting loop.');
+        break;
+      }
+
+      const video = data[0];
+      log(`▶️ Triggering video: ${video.video_id}`);
+
+      try {
+        const response = await axios.post(
+          WEBHOOK_URL,
+          { url: video.video_url },
+          { timeout: 600_000 } // 10 minutes
+        );
+
+        if (response.status === 200) {
+          log(`✅ Webhook triggered successfully for video: ${video.video_id}`);
+        } else {
+          log(`❌ Webhook failed with status ${response.status} for video: ${video.video_id}`);
+        }
+      } catch (err) {
+        log(`❌ Loop error for video_id=${video.video_id}: ${err.message}`);
+        await supabase
+          .from('youtube_video')
+          .update({ status: 'failed' })
+          .eq('video_id', video.video_id);
+        await new Promise(r => setTimeout(r, 5000));
+        continue; // continue to next video
+      }
+
+      await new Promise(r => setTimeout(r, LOOP_DELAY_MS)); // Wait before next run
+
+    } catch (err) {
+      log(`❌ Fatal loop error: ${err.message}`);
+      break;
+    }
+  }
+
+  log('🛑 Loop finished.');
+});
+
+
+
 app.listen(PORT, () => {
   console.log(`🚀 Server running at http://localhost:${PORT}`);
 });
