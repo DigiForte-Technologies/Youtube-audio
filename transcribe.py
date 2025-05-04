@@ -1,44 +1,57 @@
 import sys
 import subprocess
 import os
-from pathlib import Path
+import time
 
 video_id = sys.argv[1]
 video_url = f"https://www.youtube.com/watch?v={video_id}"
 cookies_file = "cookies.txt"
 mp3_file = f"{video_id}.mp3"
-compressed_file = f"{video_id}_compressed.mp3"
+output_template = f"{video_id}.%(ext)s"
 
-# Step 1: Download the audio (overwrite silently)
-subprocess.run([
-    "yt-dlp",
-    "--no-continue",
-    "--no-overwrites",
-    "--no-part",
-    "-x",
-    "--audio-format", "mp3",
-    "--cookies", cookies_file,
-    "-o", f"{video_id}.%(ext)s",
-    video_url
-], check=True)
+MAX_ATTEMPTS = 5
+WAIT_SECONDS = 5
 
-# Step 2: Compress audio to reduce size under 25MB
-subprocess.run([
-    "ffmpeg",
-    "-y",  # force overwrite
-    "-i", mp3_file,
-    "-b:a", "48k",  # lower bitrate = smaller file
-    "-ar", "16000",  # lower sample rate
-    compressed_file
-], check=True)
+success = False
 
-# Step 3: Clean up all files except the compressed one
+for attempt in range(1, MAX_ATTEMPTS + 1):
+    print(f"🔁 Attempt {attempt}/{MAX_ATTEMPTS} downloading {video_id}")
+    try:
+        result = subprocess.run([
+            "yt-dlp",
+            "--no-continue",
+            "--no-overwrites",
+            "--no-part",
+            "-x",
+            "--audio-format", "mp3",
+            "--cookies", cookies_file,
+            "--user-agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "-o", output_template,
+            video_url
+        ], capture_output=True, text=True)
+
+        if result.returncode == 0:
+            success = True
+            break
+        else:
+            print(f"⚠️ yt-dlp failed (code {result.returncode}): {result.stderr.strip()}")
+
+    except Exception as e:
+        print(f"❌ Exception during download: {str(e)}")
+
+    time.sleep(WAIT_SECONDS * attempt)  # Exponential backoff
+
+if not success or not os.path.exists(mp3_file):
+    print("❌ Download failed after retries.", file=sys.stderr)
+    sys.exit(1)
+
+# Cleanup: delete temp files except the final mp3
 for f in os.listdir():
-    if f.startswith(video_id) and f != f"{video_id}_compressed.mp3":
+    if f.startswith(video_id) and f != mp3_file:
         try:
             os.remove(f)
         except:
             pass
 
-# Step 4: Output final file path
-print(f"{compressed_file}")
+# Output the mp3 filename
+print(mp3_file)
